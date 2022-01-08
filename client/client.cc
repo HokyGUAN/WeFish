@@ -136,19 +136,19 @@ int main(int argc, char* argv[])
 {
     try
     {
-        if (argc != 3)
+        if (argc != 4)
         {
-            std::cerr << "Usage: ./client <Group port> <Your chat name>\n";
+            std::cerr << "Usage: ./client <IP Address> <Group port> <Your chat name>\n";
             return 1;
         }
 
         char name[Message::max_name_length + 1];
-        std::sprintf(name, "%8s", argv[2]);
+        std::sprintf(name, "%8s", argv[3]);
 
         boost::asio::io_context io_context;
         tcp::resolver resolver(io_context);
-        auto endpoints = resolver.resolve("127.0.0.1", argv[1]);
-        Client client(io_context, endpoints, argv[2]);
+        auto endpoints = resolver.resolve(argv[1], argv[2]);
+        Client client(io_context, endpoints, argv[3]);
 
         std::thread client_thread([&io_context](){ io_context.run(); });
 

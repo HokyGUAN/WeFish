@@ -24,5 +24,5 @@ $ ./server <Group Port>
 > ### Startup WeFish Client
 ```
 $ cd build/client
-$ ./client <Group Port> <Your Chat Name>
+$ ./client <IP Address> <Group Port> <Your Chat Name>
 ```
