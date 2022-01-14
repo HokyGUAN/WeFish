@@ -10,6 +10,7 @@
 #include <thread>
 #include <boost/asio.hpp>
 #include "client.hpp"
+#include <stdio.h>
 
 
 // Client implementation
@@ -195,19 +196,49 @@ int main(int argc, char* argv[])
         auto endpoints = resolver.resolve(argv[1], argv[2]);
         Client client(io_context, endpoints, argv[3]);
 
-        std::thread client_thread([&io_context](){ io_context.run(); });
-
-        std::string line;
-        while (client.GetProcessStatus()) {
-            std::getline(std::cin, line);
-            if (!line.empty()) {
-                jsonrpcpp::request_ptr request(nullptr);
-                request.reset(new jsonrpcpp::Request(jsonrpcpp::Id(MESSAGE_TYPE_CONTENT), "Content", jsonrpcpp::Parameter("Who", client.GetName(), "Content", line)));
-                client.Send(request->to_json().dump());
+        std::thread input_system_thread([&]() {
+            while (client.GetProcessStatus()) {
+                try {
+                    std::string line;
+                    while (client.GetProcessStatus()) {
+                        std::getline(std::cin, line);
+                        if (!line.empty()) {
+                            jsonrpcpp::request_ptr request(nullptr);
+                            request.reset(new jsonrpcpp::Request(jsonrpcpp::Id(MESSAGE_TYPE_CONTENT), "Content", jsonrpcpp::Parameter("Who", client.GetName(), "Content", line)));
+                            client.Send(request->to_json().dump());
+                        }
+                    }
+                } catch (std::exception& e) {
+                    std::cout << "Exception Occurred at Input System\n" \
+                              << "Restarting Input System\n" \
+                              << "Input System Ready\n" \
+                              << "Input Your Word\n";
+                }
             }
-        }
+        });
+        input_system_thread.detach();
 
-        client_thread.join();
+        boost::asio::signal_set signals(io_context, SIGINT, SIGTERM, SIGPIPE);
+        signals.async_wait([&](const boost::system::error_code& ec, int signal) {
+            if (!ec) {
+                switch (signal) {
+                case SIGINT:
+                case SIGTERM:
+                    throw std::system_error();
+                    break;
+                case SIGPIPE:
+                    break;
+                default:
+                    throw std::system_error();
+                    break;
+                }
+            } else {
+                std::cout << "Failed to wait for signal, error: " << ec.message() << "\n";
+            }
+            client.Stop();
+        });
+
+        io_context.run();
     }
     catch (std::exception& e)
     {
