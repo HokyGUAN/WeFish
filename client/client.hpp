@@ -38,7 +38,7 @@ private:
 class Client
 {
 public:
-    Client(boost::asio::io_context& io_context, tcp::resolver::results_type& endpoints, std::string self_name);
+    Client(boost::asio::io_context& io_context, tcp::resolver::results_type& endpoints, std::string self_name, int to_id);
     ~Client() = default;
 
     void Start();
@@ -47,7 +47,9 @@ public:
     void Send(const std::string& msg);
     std::string GetName();
     bool GetProcessStatus() { return isProcessing_; }
-    
+
+    int ID_;
+    int ToID_;
 private:
     bool isProcessing_;
     std::shared_ptr<Connection> connection_;

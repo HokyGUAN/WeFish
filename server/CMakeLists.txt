@@ -1,13 +1,22 @@
-set(PROG_NAME server)
+SET(PROG_NAME server)
 
-include_directories(
-  ${CMAKE_SOURCE_DIR}
+INCLUDE_DIRECTORIES(
+  ${CMAKE_SOURCE_DIR}/common
+  ${CMAKE_SOURCE_DIR}/crypto
   ${CMAKE_SOURCE_DIR}/${PROG_NAME}
 )
 
-aux_source_directory(
+AUX_SOURCE_DIRECTORY(
   ${CMAKE_SOURCE_DIR}/${PROG_NAME}
   src_dir
 )
 
-add_executable(${PROG_NAME} ${src_dir})
+ADD_EXECUTABLE(${PROG_NAME} ${src_dir})
+
+#target_include_directories(${PROG_NAME} PUBLIC ${CMAKE_SOURCE_DIR}/cryptopp)
+
+TARGET_LINK_LIBRARIES(
+  ${PROG_NAME} PUBLIC
+  cryptor
+  cryptopp
+)

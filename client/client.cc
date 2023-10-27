@@ -14,8 +14,8 @@
 
 
 // Client implementation
-Client::Client(boost::asio::io_context& io_context, tcp::resolver::results_type& endpoints, std::string self_name)
-    : self_name_(self_name), isProcessing_(true)
+Client::Client(boost::asio::io_context& io_context, tcp::resolver::results_type& endpoints, std::string self_name, int to_id)
+    : self_name_(self_name), isProcessing_(true), ToID_(to_id)
 {
     connection_ = std::make_shared<Connection>(io_context, endpoints);
     Start();
@@ -53,12 +53,18 @@ void Client::doMessageReceived()
             if (entity->is_response()) {
                 //TODO: Something about Setting message
                 jsonrpcpp::response_ptr response = std::dynamic_pointer_cast<jsonrpcpp::Response>(entity);
-                std::string result_str = response->to_json().dump();
-                std::cout << "Response From Server: " << result_str << "\n";
+                std::string result_str = response->result().dump();
+				jsonrpcpp::parameter_ptr param = std::make_shared<jsonrpcpp::Parameter>(response->result());
+				ID_ = (int)param->get("IDinGroup");
+                std::cout << "Response From Server: " << result_str << "---" << param->get("IDinGroup") << "\n";
             } else if (entity->is_notification()) {
                 jsonrpcpp::notification_ptr notification = std::dynamic_pointer_cast<jsonrpcpp::Notification>(entity);
                 if (notification->method() == "ContentNotification") {
                     std::string who_str = notification->params().get("Who");
+                    std::string content_str = notification->params().get("Content");
+                    std::cout << "\t\t\t\t" << who_str << ": " << content_str << "\n";
+				} else if (notification->method() == "PicContentNotification") {
+					std::string who_str = notification->params().get("Who");
                     std::string content_str = notification->params().get("Content");
                     std::cout << "\t\t\t\t" << who_str << ": " << content_str << "\n";
                 } else if (notification->method() == "OnlineNotification") {
@@ -186,15 +192,15 @@ int main(int argc, char* argv[])
 {
     try
     {
-        if (argc != 4) {
-            std::cerr << "Usage: ./client <IP Address> <Group port> <Your chat name>\n";
+        if (argc != 3) {
+            std::cerr << "Usage: ./client <Your chat name>\n";
             return 1;
         }
 
         boost::asio::io_context io_context;
         tcp::resolver resolver(io_context);
-        auto endpoints = resolver.resolve(argv[1], argv[2]);
-        Client client(io_context, endpoints, argv[3]);
+        auto endpoints = resolver.resolve("10.13.3.32", "6869");
+        Client client(io_context, endpoints, argv[1], atoi(argv[2]));
 
         std::thread input_system_thread([&]() {
             while (client.GetProcessStatus()) {
@@ -204,8 +210,10 @@ int main(int argc, char* argv[])
                         std::getline(std::cin, line);
                         if (!line.empty()) {
                             jsonrpcpp::request_ptr request(nullptr);
-                            request.reset(new jsonrpcpp::Request(jsonrpcpp::Id(MESSAGE_TYPE_CONTENT), "Content", jsonrpcpp::Parameter("Who", client.GetName(), "Content", line)));
+                            request.reset(new jsonrpcpp::Request(jsonrpcpp::Id(MESSAGE_TYPE_CONTENT), "Content", jsonrpcpp::Parameter("IDinGroup", client.ID_, "Who", client.GetName(),
+                                "ToID", client.ToID_, "Content", line)));
                             client.Send(request->to_json().dump());
+                            std::cout << request->to_json().dump() << "\n";
                         }
                     }
                 } catch (std::exception& e) {
