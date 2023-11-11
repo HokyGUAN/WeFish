@@ -171,7 +171,8 @@ public:
     Parameter(std::nullptr_t);
     Parameter(const Json& json = nullptr);
     Parameter(const std::string& key1, const Json& value1, const std::string& key2 = "", const Json& value2 = nullptr, const std::string& key3 = "",
-              const Json& value3 = nullptr, const std::string& key4 = "", const Json& value4 = nullptr);
+              const Json& value3 = nullptr, const std::string& key4 = "", const Json& value4 = nullptr, const std::string& key5 = "", const Json& value5 = nullptr,
+              const std::string& key6 = "", const Json& value6 = nullptr, const std::string& key7 = "", const Json& value7 = nullptr, const std::string& key8 = "", const Json& value8 = nullptr);
 
     Json to_json() const override;
     void parse_json(const Json& json) override;
@@ -681,7 +682,9 @@ inline Parameter::Parameter(const Json& json) : NullableEntity(entity_t::id), ty
 }
 
 inline Parameter::Parameter(const std::string& key1, const Json& value1, const std::string& key2, const Json& value2, const std::string& key3,
-                            const Json& value3, const std::string& key4, const Json& value4)
+                            const Json& value3, const std::string& key4, const Json& value4, const std::string& key5, const Json& value5,
+                            const std::string& key6, const Json& value6, const std::string& key7, const Json& value7,
+                            const std::string& key8, const Json& value8)
     : NullableEntity(entity_t::id), type(value_t::map)
 {
     param_map[key1] = value1;
@@ -691,6 +694,14 @@ inline Parameter::Parameter(const std::string& key1, const Json& value1, const s
         param_map[key3] = value3;
     if (!key4.empty())
         param_map[key4] = value4;
+    if (!key5.empty())
+        param_map[key5] = value5;
+    if (!key6.empty())
+        param_map[key6] = value6;
+    if (!key7.empty())
+        param_map[key7] = value7;
+    if (!key8.empty())
+        param_map[key8] = value8;
 }
 
 inline void Parameter::parse_json(const Json& json)

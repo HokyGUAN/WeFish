@@ -10,6 +10,7 @@
 typedef enum MessageType_ {
     MESSAGE_TYPE_CONTENT = 1,
     MESSAGE_TYPE_SETTING,
+    MESSAGE_TYPE_FILE,
     MESSAGE_TYPE_MAX
 } MessageType;
 

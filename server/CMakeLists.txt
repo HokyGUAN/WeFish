@@ -3,7 +3,12 @@ SET(PROG_NAME server)
 INCLUDE_DIRECTORIES(
   ${CMAKE_SOURCE_DIR}/common
   ${CMAKE_SOURCE_DIR}/crypto
+  ${CMAKE_SOURCE_DIR}/sbase
   ${CMAKE_SOURCE_DIR}/${PROG_NAME}
+)
+
+LINK_DIRECTORIES(
+  ${CMAKE_SOURCE_DIR}/sbase
 )
 
 AUX_SOURCE_DIRECTORY(
@@ -19,4 +24,6 @@ TARGET_LINK_LIBRARIES(
   ${PROG_NAME} PUBLIC
   cryptor
   cryptopp
+  sbase
+  sqlite3
 )

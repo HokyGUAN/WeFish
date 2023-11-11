@@ -15,28 +15,31 @@
 #include "cryptor.h"
 
 
-Session::Session(boost::asio::io_context& io_context, tcp :: socket socket, Group & group)
+Session::Session(boost::asio::io_context& io_context, tcp::socket socket, Group& group)
     : socket_(std::move(socket)), group_(group), strand_(io_context)
 {
     key_ = "ba3483abc1af7e9d0cf2325010ed76d7";
-    //cryptor_ = std::make_shared<Cryptor>(key);
+    sbase_ = std::make_shared<SBase>();
     IDinGroup_ = group_.GetAvailableID();
+    sbase_->Initialise("./wefish.db");
 }
 
 void Session::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::entity_ptr& response, jsonrpcpp::notification_ptr& notification)
 {
-    try
-    {
+    try {
         Json result;
         if (request->id().int_id() == MESSAGE_TYPE_CONTENT) {
             if (request->method() == "Content") {
-                //std::cout << "To: " << (int)request->params().get("ToID") << "\n";
                 notification.reset(new jsonrpcpp::Notification("ContentNotification", jsonrpcpp::Parameter("IDinGroup", request->params().get("IDinGroup"), "Who", request->params().get("Who"), \
                                                                 "ToID", request->params().get("ToID"), "Content", request->params().get("Content"))));
             } else if (request->method() == "SayHello") {
-                notification.reset(new jsonrpcpp::Notification("OnlineNotification", jsonrpcpp::Parameter("Who", request->params().get("Who"), "IDinGroup", IDinGroup_, "Icon", request->params().get("Icon"))));
+                group_.Join(shared_from_this());
+                account_ = request->params().get("Account");
                 name_ = request->params().get("Who");
                 icon_ = request->params().get("Icon");
+                notification.reset(new jsonrpcpp::Notification("OnlineNotification", jsonrpcpp::Parameter("Account", account_, "Who", name_, "IDinGroup", IDinGroup_, "Icon", icon_)));
+                result["Method"] = "SayHello";
+                result["Account"] = account_;
                 result["IDinGroup"] = IDinGroup_;
                 result["ActiveList"] = group_.GetActiveList();
                 response.reset(new jsonrpcpp::Response(*request, result));
@@ -45,12 +48,60 @@ void Session::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::en
                                                                 "ToID", request->params().get("ToID"), "Content", request->params().get("Content"))));
             }
         } else if (request->id().int_id() == MESSAGE_TYPE_SETTING) {
+            if (request->method() == "RegisterRequest") {
+                std::string code = sbase_->GetInviteCode();
+                if (code.compare(request->params().get("Invitecode")) == 0) {
+                    int use_times = sbase_->GetInviteCodeTimes();
+                    if (use_times < 30) {
+                        int user_id = 522000 + sbase_->Count();
+                        std::cout << "New Account Registered, ID: " << std::to_string(user_id) << std::endl;
+                        std::string passw = request->params().get("Password");
+                        std::string name = request->params().get("Name");
+                        std::string icon = request->params().get("Icon");
+                        sbase_->Insert(user_id, passw, name, icon);
+                        sbase_->UpdateInviteCodeTimes(use_times + 1);
+                        result["Method"] = "RegisterRequest";
+                        result["StatusCode"] = 0;
+                        result["Account"] = std::to_string(user_id);
+                        result["Password"] = passw;
+                    } else {
+                        std::string new_invite_code = sbase_->GenerateInviteCode();
+                        std::cout << "Generated New Invite Code: " << new_invite_code << std::endl;
+                        sbase_->ChangeInviteCode(new_invite_code);
+                        result["Method"] = "RegisterRequest";
+                        result["StatusCode"] = 1;
+                        result["NewInviteCode"] = new_invite_code;
+                    }
+                    response.reset(new jsonrpcpp::Response(*request, result));
+                } else {
+                    result["Method"] = "RegisterRequest";
+                    result["StatusCode"] = 2;
+                    response.reset(new jsonrpcpp::Response(*request, result));
+                }
+            } else if (request->method() == "PermissionRequest") {
+                int account = request->params().get("Account");
+                std::string passw;
+                std::string name;
+                std::string icon;
+                sbase_->ReadByID(account, "passw", &passw);
+                if (passw.compare(request->params().get("Password")) == 0) {
+                    sbase_->ReadByID(account, "name", &name);
+                    sbase_->ReadByID(account, "icon", &icon);
+                    result["Method"] = "PermissionRequest";
+                    result["StatusCode"] = 0;
+                    result["Account"] = account;
+                    result["Name"] = name;
+                    result["Icon"] = icon;
+                } else {
+                    result["Method"] = "PermissionRequest";
+                    result["StatusCode"] = 1;
+                }
+                response.reset(new jsonrpcpp::Response(*request, result));
+            }
         } else {
             std::cout << "NULL Process Request\n";
         }
-    }
-    catch (const std::exception& e)
-    {
+    } catch (const std::exception& e) {
         std::cout << "Server::onMessageReceived exception: " << e.what() << ", message: " << request->to_json().dump() << "\n";
         response.reset(new jsonrpcpp::InternalErrorException(e.what(), request->id()));
     }
@@ -60,27 +111,20 @@ void Session::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::en
 std::string Session::doMessageReceived(const std::string& message)
 {
     jsonrpcpp::entity_ptr entity(nullptr);
-    try
-    {
+    try {
         entity = jsonrpcpp::Parser::do_parse(message);
         if (!entity)
             return "";
-
-    }
-    catch (const jsonrpcpp::ParseErrorException& e)
-    {
+    } catch (const jsonrpcpp::ParseErrorException& e) {
         std::cout << e.to_json().dump() << "\nCaused by:" << message << "\n";
         return e.to_json().dump();
-    }
-    catch (const std::exception& e)
-    {
+    } catch (const std::exception& e) {
         std::cout << e.what() << "\nCaused by:" << message << "\n";
         return jsonrpcpp::ParseErrorException(e.what()).to_json().dump();
     }
     jsonrpcpp::entity_ptr response(nullptr);
     jsonrpcpp::notification_ptr notification(nullptr);
-    if (entity->is_request())
-    {
+    if (entity->is_request()) {
         auto self(shared_from_this());
         jsonrpcpp::request_ptr request = std::dynamic_pointer_cast<jsonrpcpp::Request>(entity);
         processRequest(request, response, notification);
@@ -111,7 +155,8 @@ std::string Session::doMessageReceived(const std::string& message)
 
 void Session::Start()
 {
-    group_.Join(shared_from_this());
+    // Need SayHello to join chat group
+    // group_.Join(shared_from_this());
     doRead();
 }
 

@@ -1,17 +1,18 @@
 /*
- *         WeFish Server
+ *      WeFish File Server
  *
  *  Author: <hoky.guan@tymphany.com>
  *
  */
-#ifndef SERVER_H
-#define SERVER_H
+#ifndef UPGRADER_H
+#define UPGRADER_H
 
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
 #include <boost/shared_ptr.hpp>
 
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <map>
 #include <memory>
@@ -24,8 +25,6 @@
 
 #include "jsonrpcpp.hpp"
 #include "message.hpp"
-#include "cryptor.h"
-#include "sbase.h"
 
 
 using boost::asio::ip::tcp;
@@ -39,10 +38,7 @@ class Participant
 public:
     virtual ~Participant() {}
     virtual void Deliver(const std::string& msg) = 0;
-    int IDinGroup_;
     int account_;
-    std::string name_;
-    std::string icon_;
 };
 
 typedef std::shared_ptr<Participant> Participant_ptr;
@@ -50,17 +46,11 @@ typedef std::shared_ptr<Participant> Participant_ptr;
 class Group
 {
 public:
-    Group():available_id_(0){}
+    Group(){}
 
     void Join(Participant_ptr participant)
     {
         participants_.push_back(participant);
-    }
-
-    void Flush(Participant_ptr participant)
-    {
-        for (auto msg: recentMessages_)
-            participant->Deliver(msg);
     }
 
     void Leave(Participant_ptr participant)
@@ -68,59 +58,28 @@ public:
         participants_.remove(participant);
     }
 
-    //Include Self
-    void Deliver(const std::string& msg)
+    void Deliver(Participant_ptr self_ptr, const std::string& msg)
     {
-        recentMessages_.push_back(msg);
-        while (recentMessages_.size() > max_recent_msgs)
-            recentMessages_.pop_front();
-
-        for (auto participant: participants_)
-            participant->Deliver(msg);
-    }
-    //Exclude Self
-    void Deliver(Participant_ptr self_ptr, const std::string& msg, NotificationType type)
-    {
-        if (type == NOTIFICATION_TYPE_HIS)
-            recentMessages_.push_back(msg);
-        while (recentMessages_.size() > max_recent_msgs)
-            recentMessages_.pop_front();
-
         for (auto participant: participants_)
             if (self_ptr != participant)
                 participant->Deliver(msg);
     }
-    //Specify
-    void Deliver(int to_id, const std::string& msg)
+
+    void Deliver(int to_account, const std::string& msg)
     {
         for (auto participant: participants_)
-            if (to_id == participant->IDinGroup_)
+            if (to_account == participant->account_)
                 participant->Deliver(msg);
     }
 
-    int GetAvailableID()
-    {
-        return ++available_id_;
-    }
-
-    std::string GetActiveList()
-    {
-        std::string liststr;
-        for (auto participant: participants_)
-            liststr += "#W#F#" + std::to_string(participant->IDinGroup_) + "-W-F-" + participant->name_ + "-W-F-" + participant->icon_ + "#W#F#";
-        return liststr;
-    }
 private:
     std::list<Participant_ptr> participants_;
-    enum { max_recent_msgs = 100 };
-    MessageQueue recentMessages_;
-    int available_id_;
 };
 
-class Session : public Participant, public std::enable_shared_from_this<Session>
+class FSession : public Participant, public std::enable_shared_from_this<FSession>
 {
 public:
-    Session(boost::asio::io_context& io_context, tcp::socket socket, Group& group);
+    FSession(boost::asio::io_context& io_context, tcp::socket socket, Group& group);
 
     void Start();
     void Deliver(const std::string& msg);
@@ -129,23 +88,20 @@ public:
     void doRead();
     void doWrite();
 
-    //int IDinGroup_;
-    //std::string name_;
 private:
     tcp::socket socket_;
     boost::asio::streambuf streambuf_;
     boost::asio::io_context::strand strand_;
     Group& group_;
     MessageQueue messages_;
-    std::string key_;
-    std::shared_ptr<SBase> sbase_;
+    std::fstream file_stream_;
 };
 
-class Server
+class FServer
 {
 public:
-    Server(boost::asio::io_context& io_context, const tcp::endpoint& endpoint);
-    ~Server() = default;
+    FServer(boost::asio::io_context& io_context, const tcp::endpoint& endpoint);
+    ~FServer() = default;
 
     void doAccept();
 

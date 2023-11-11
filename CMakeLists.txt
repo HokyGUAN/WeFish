@@ -9,5 +9,6 @@ if(CMAKE_COMPILER_IS_GNUCXX)
 endif()
 
 add_subdirectory(server)
-
 add_subdirectory(client)
+add_subdirectory(fserver)
+add_subdirectory(fclient)
