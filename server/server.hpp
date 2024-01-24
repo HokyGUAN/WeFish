@@ -39,7 +39,7 @@ class Participant
 public:
     virtual ~Participant() {}
     virtual void Deliver(const std::string& msg) = 0;
-    int IDinGroup_;
+
     int account_;
     std::string name_;
     std::string icon_;
@@ -50,7 +50,7 @@ typedef std::shared_ptr<Participant> Participant_ptr;
 class Group
 {
 public:
-    Group():available_id_(0){}
+    Group() {}
 
     void Join(Participant_ptr participant)
     {
@@ -59,8 +59,10 @@ public:
 
     void Flush(Participant_ptr participant)
     {
-        for (auto msg: recentMessages_)
+        for (auto msg: recentMessages_) {
             participant->Deliver(msg);
+            std::cout << "M: " << msg << std::endl;
+        }
     }
 
     void Leave(Participant_ptr participant)
@@ -91,30 +93,24 @@ public:
                 participant->Deliver(msg);
     }
     //Specify
-    void Deliver(int to_id, const std::string& msg)
+    void Deliver(int to_account, const std::string& msg)
     {
         for (auto participant: participants_)
-            if (to_id == participant->IDinGroup_)
+            if (to_account == participant->account_)
                 participant->Deliver(msg);
-    }
-
-    int GetAvailableID()
-    {
-        return ++available_id_;
     }
 
     std::string GetActiveList()
     {
         std::string liststr;
         for (auto participant: participants_)
-            liststr += "#W#F#" + std::to_string(participant->IDinGroup_) + "-W-F-" + participant->name_ + "-W-F-" + participant->icon_ + "#W#F#";
+            liststr += "#W#F#" + std::to_string(participant->account_) + "-W-F-" + participant->name_ + "-W-F-" + participant->icon_ + "#W#F#";
         return liststr;
     }
 private:
     std::list<Participant_ptr> participants_;
     enum { max_recent_msgs = 100 };
     MessageQueue recentMessages_;
-    int available_id_;
 };
 
 class Session : public Participant, public std::enable_shared_from_this<Session>

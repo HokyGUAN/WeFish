@@ -4,6 +4,7 @@
 #include <fstream>
 #include <string>
 #include <deque>
+#include <map>
 #include <boost/asio.hpp>
 
 #include "jsonrpcpp.hpp"
@@ -35,11 +36,11 @@ private:
     std::deque<std::string> messages_;
 };
 
-class FContainer
+class FileStream
 {
 public:
-    FContainer() {};
-    ~FContainer() = default;
+    FileStream(std::string& name);
+    ~FileStream() = default;
 
     void Push(std::string& content);
     std::string Pop(void);
@@ -47,7 +48,7 @@ public:
 
 private:
     std::string name_;
-    std::string container_;
+    std::string contents_;
 };
 
 class FClient
@@ -64,8 +65,8 @@ public:
 
 private:
     std::shared_ptr<Connection> connection_;
-    std::ofstream file_stream_;
-    std::map<std::string, std::shared_ptr<FContainer>> m_file_container_;
+    std::map<std::string, std::shared_ptr<FileStream>> container_;
+    std::shared_ptr<FileStream> upgrade_stream_ = nullptr;
 };
 
 

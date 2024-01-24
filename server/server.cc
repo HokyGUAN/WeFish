@@ -20,7 +20,6 @@ Session::Session(boost::asio::io_context& io_context, tcp::socket socket, Group&
 {
     key_ = "ba3483abc1af7e9d0cf2325010ed76d7";
     sbase_ = std::make_shared<SBase>();
-    IDinGroup_ = group_.GetAvailableID();
     sbase_->Initialise("./wefish.db");
 }
 
@@ -30,25 +29,26 @@ void Session::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::en
         Json result;
         if (request->id().int_id() == MESSAGE_TYPE_CONTENT) {
             if (request->method() == "Content") {
-                notification.reset(new jsonrpcpp::Notification("ContentNotification", jsonrpcpp::Parameter("IDinGroup", request->params().get("IDinGroup"), "Who", request->params().get("Who"), \
-                                                                "ToID", request->params().get("ToID"), "Content", request->params().get("Content"))));
-            } else if (request->method() == "SayHello") {
-                group_.Join(shared_from_this());
-                account_ = request->params().get("Account");
-                name_ = request->params().get("Who");
-                icon_ = request->params().get("Icon");
-                notification.reset(new jsonrpcpp::Notification("OnlineNotification", jsonrpcpp::Parameter("Account", account_, "Who", name_, "IDinGroup", IDinGroup_, "Icon", icon_)));
-                result["Method"] = "SayHello";
-                result["Account"] = account_;
-                result["IDinGroup"] = IDinGroup_;
-                result["ActiveList"] = group_.GetActiveList();
-                response.reset(new jsonrpcpp::Response(*request, result));
+                notification.reset(new jsonrpcpp::Notification("ContentNotification", \
+                    jsonrpcpp::Parameter("Account", request->params().get("Account"), "Name", request->params().get("Name"), "Icon", request->params().get("Icon"), \
+                                        "ToAccount", request->params().get("ToAccount"), "Content", request->params().get("Content"))));  
             } else if (request->method() == "PicContent") {
-                notification.reset(new jsonrpcpp::Notification("PicContentNotification", jsonrpcpp::Parameter("IDinGroup", request->params().get("IDinGroup"), "Who", request->params().get("Who"), \
-                                                                "ToID", request->params().get("ToID"), "Content", request->params().get("Content"))));
+                notification.reset(new jsonrpcpp::Notification("PicContentNotification", \
+                    jsonrpcpp::Parameter("Account", request->params().get("Account"), "Name", request->params().get("Name"), "Icon", request->params().get("Icon"), \
+                                        "ToAccount", request->params().get("ToAccount"), "Content", request->params().get("Content"))));
             }
         } else if (request->id().int_id() == MESSAGE_TYPE_SETTING) {
-            if (request->method() == "RegisterRequest") {
+            if (request->method() == "SayHello") {
+                group_.Join(shared_from_this());
+                account_ = request->params().get("Account");
+                name_ = request->params().get("Name");
+                icon_ = request->params().get("Icon");
+                notification.reset(new jsonrpcpp::Notification("OnlineNotification", jsonrpcpp::Parameter("Account", account_, "Name", name_, "Icon", icon_)));
+                result["Method"] = "SayHello";
+                result["Account"] = account_;
+                result["ActiveList"] = group_.GetActiveList();
+                response.reset(new jsonrpcpp::Response(*request, result));
+            } else if (request->method() == "RegisterRequest") {
                 std::string code = sbase_->GetInviteCode();
                 if (code.compare(request->params().get("Invitecode")) == 0) {
                     int use_times = sbase_->GetInviteCodeTimes();
@@ -132,16 +132,16 @@ std::string Session::doMessageReceived(const std::string& message)
             if (notification->method() == "OnlineNotification") {
                 group_.Deliver(self, notification->to_json().dump(), NOTIFICATION_TYPE_NO_HIS);
             } else if (notification->method() == "ContentNotification") {
-                if (!(int)notification->params().get("ToID")) {
+                if (!(int)notification->params().get("ToAccount")) {
                     group_.Deliver(self, notification->to_json().dump(), NOTIFICATION_TYPE_HIS);
                 } else {
-                    group_.Deliver((int)notification->params().get("ToID"), notification->to_json().dump());
+                    group_.Deliver((int)notification->params().get("ToAccount"), notification->to_json().dump());
                 }
             } else if (notification->method() == "PicContentNotification") {
-                if (!(int)notification->params().get("ToID")) {
+                if (!(int)notification->params().get("ToAccount")) {
                     group_.Deliver(self, notification->to_json().dump(), NOTIFICATION_TYPE_HIS);
                 } else {
-                    group_.Deliver((int)notification->params().get("ToID"), notification->to_json().dump());
+                    group_.Deliver((int)notification->params().get("ToAccount"), notification->to_json().dump());
                 }
             }
         }
@@ -170,7 +170,7 @@ void Session::doRead()
             if (ec) {
                 auto self = shared_from_this();
                 jsonrpcpp::notification_ptr notification(nullptr);
-                notification.reset(new jsonrpcpp::Notification("OfflineNotification", jsonrpcpp::Parameter("Who", self->name_, "IDinGroup", IDinGroup_)));
+                notification.reset(new jsonrpcpp::Notification("OfflineNotification", jsonrpcpp::Parameter("Name", self->name_, "Account", account_)));
                 group_.Deliver(self, notification->to_json().dump(), NOTIFICATION_TYPE_NO_HIS);
                 group_.Leave(self);
                 return;
@@ -199,7 +199,12 @@ void Session::doRead()
                     if (!response.empty()) {
                         Deliver(response);
                         //Flush history after return activelist
-                        group_.Flush(shared_from_this());
+                        jsonrpcpp::entity_ptr entity(nullptr);
+                        entity = jsonrpcpp::Parser::do_parse(response);
+                        jsonrpcpp::response_ptr response = std::dynamic_pointer_cast<jsonrpcpp::Response>(entity);
+                        if (response->to_json()["result"]["Method"] == "SayHello") {
+                            group_.Flush(shared_from_this());
+                        }
                     }
                 }
             }

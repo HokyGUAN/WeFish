@@ -4,8 +4,8 @@
  *  Author: <hoky.guan@tymphany.com>
  *
  */
-#ifndef UPGRADER_H
-#define UPGRADER_H
+#ifndef FSERVER_H
+#define FSERVER_H
 
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
@@ -95,6 +95,8 @@ private:
     Group& group_;
     MessageQueue messages_;
     std::fstream file_stream_;
+    size_t upgrade_file_size_ = 0;
+    size_t upgrade_data_consume_ = 0;
 };
 
 class FServer

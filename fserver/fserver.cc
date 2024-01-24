@@ -26,9 +26,32 @@ void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::e
             if (request->method() == "SayHello") {
                 group_.Join(shared_from_this());
                 account_ = request->params().get("Account");
+                std::string client_version = request->params().get("Clientversion");
+                std::cout << "Clientversion: " << client_version << std::endl;
+                //TODO need to read file
+                if (client_version != "2.0") {
+                    result["Expired"] = 1;
+                } else {
+                    result["Expired"] = 0;
+                }
                 result["Method"] = "SayHello";
                 result["Account"] = account_;
-                response.reset(new jsonrpcpp::Response(*request, result));
+                response.reset(new jsonrpcpp::Response(*request, result)); 
+            } else if (request->method() == "UpgradeRequest") {
+                file_stream_.open("upgrade.exe", std::ios::in | std::ios::binary);
+                if (!file_stream_.is_open()) {
+                    std::cerr << "Could not open file" << std::endl;
+                    return;
+                }
+                file_stream_.seekg(0, std::ios::end);
+                upgrade_file_size_ = file_stream_.tellg();
+                file_stream_.seekg(0, std::ios::beg);
+                upgrade_data_consume_ = 0;
+
+                result["Method"] = "UpgradeReply";
+                result["Filesize"] = upgrade_file_size_;
+                result["Filename"] = "upgrade.exe";
+                response.reset(new jsonrpcpp::Response(*request, result)); 
             }
         } else if (request->id().int_id() == MESSAGE_TYPE_FILE) {
             if (request->method() == "FileTransfer") {
@@ -40,18 +63,48 @@ void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::e
                 std::string content = request->params().get("Content");
                 int status = request->params().get("Status");
 
-                std::cout << "Account: " << std::to_string(account) << std::endl;
-                std::cout << "ToAccount: " << std::to_string(to_account) << std::endl;
-                std::cout << "Filename: " << filename << std::endl;
-                std::cout << "Filesize: " << std::to_string(filesize) << std::endl;
-                std::cout << "Checksum: " << checksum << std::endl;
-                std::cout << "Content: " << content << std::endl;
-                std::cout << "Status: " << std::to_string(status) << std::endl;
+                // std::cout << "Account: " << std::to_string(account) << std::endl;
+                // std::cout << "ToAccount: " << std::to_string(to_account) << std::endl;
+                // std::cout << "Filename: " << filename << std::endl;
+                // std::cout << "Filesize: " << std::to_string(filesize) << std::endl;
+                // std::cout << "Checksum: " << checksum << std::endl;
+                // std::cout << "Content: " << content << std::endl;
+                // std::cout << "Status: " << std::to_string(status) << std::endl;
+
                 notification.reset(new jsonrpcpp::Notification("FileTransferNotification",
                     jsonrpcpp::Parameter("Account", request->params().get("Account"), "ToAccount", request->params().get("ToAccount"),
                                         "Status", request->params().get("Status"), "Filename", request->params().get("Filename"),
                                         "Filesize", request->params().get("Filesize"), "Checksum", request->params().get("Checksum"), 
                                         "Content", request->params().get("Content"))));
+            } else if (request->method() == "UpgradeFileTransfer") {
+                int account = request->params().get("Account");
+                //std::cout << "Account: " << std::to_string(account) << std::endl;
+
+                if (file_stream_.eof()) {
+                    file_stream_.close();
+                    return;
+                }
+
+                char buffer[1025] = {0};
+                file_stream_.read(buffer, 1024);
+                size_t real_read = file_stream_.gcount();
+                std::string content = buffer;
+
+                upgrade_data_consume_ += real_read;
+
+                if (real_read < 1024) {
+                    content.erase(real_read, 1024 - real_read);
+                    file_stream_.close();
+                }
+                int process = (upgrade_data_consume_ * 100) / upgrade_file_size_;
+
+                std::cout << "Data: " << content << "\n";
+
+                result["Method"] = "UpgradeProcessing";
+                result["Account"] = account;
+                //result["Content"] = content;
+                result["Process"] = process;
+                response.reset(new jsonrpcpp::Response(*request, result));
             }
         } else {
             std::cout << "NULL Process Request\n";
@@ -92,7 +145,7 @@ std::string FSession::doMessageReceived(const std::string& message)
             }
         }
         if (response) {
-            //std::cout << "Response: " << response->to_json().dump() << "\n";
+            std::cout << "Response: " << response->to_json().dump() << "\n";
             return response->to_json().dump();
         }
         return "";
@@ -101,12 +154,13 @@ std::string FSession::doMessageReceived(const std::string& message)
 
 void FSession::Start()
 {
-    file_stream_.open("example.txt", std::ios::out | std::ios::binary);
-    if (file_stream_.is_open()) {
-        doRead();
-    } else {
-        std::cerr << "Unable to open file" << std::endl;
-    }
+    doRead();
+    // file_stream_.open("example.txt", std::ios::out | std::ios::binary);
+    // if (file_stream_.is_open()) {
+    //     doRead();
+    // } else {
+    //     std::cerr << "Unable to open file" << std::endl;
+    // }
 }
 
 void FSession::doRead()
