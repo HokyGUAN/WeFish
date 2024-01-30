@@ -5,6 +5,8 @@
  *
  */
 #include "fserver.hpp"
+#include "base64.hpp"
+#include "cryptor.h"
 
 #include <csignal>
 #include <chrono>
@@ -16,6 +18,7 @@
 FSession::FSession(boost::asio::io_context& io_context, tcp::socket socket, Group& group)
     : socket_(std::move(socket)), strand_(io_context), group_(group)
 {
+    key_ = "ba3483abc1af7e9d0cf2325010ed76d7";
 }
 
 void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::entity_ptr& response, jsonrpcpp::notification_ptr& notification)
@@ -38,19 +41,22 @@ void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::e
                 result["Account"] = account_;
                 response.reset(new jsonrpcpp::Response(*request, result)); 
             } else if (request->method() == "UpgradeRequest") {
-                file_stream_.open("upgrade.exe", std::ios::in | std::ios::binary);
-                if (!file_stream_.is_open()) {
+                std::fstream file_stream;
+                file_stream.open("Chains.wav", std::ios::in | std::ios::binary);
+                if (!file_stream.is_open()) {
                     std::cerr << "Could not open file" << std::endl;
                     return;
                 }
-                file_stream_.seekg(0, std::ios::end);
-                upgrade_file_size_ = file_stream_.tellg();
-                file_stream_.seekg(0, std::ios::beg);
-                upgrade_data_consume_ = 0;
+
+                file_content_.assign(std::istreambuf_iterator<char>(file_stream), std::istreambuf_iterator<char>());
+                file_stream.close();
+
+                encoded_content_ = CBASE64::Encode(file_content_.data(), file_content_.size());
+                encoded_size_ = encoded_content_.size();
 
                 result["Method"] = "UpgradeReply";
-                result["Filesize"] = upgrade_file_size_;
-                result["Filename"] = "upgrade.exe";
+                result["Filesize"] = file_content_.size();
+                result["Filename"] = "upgrade_rev.exe";
                 response.reset(new jsonrpcpp::Response(*request, result)); 
             }
         } else if (request->id().int_id() == MESSAGE_TYPE_FILE) {
@@ -78,31 +84,27 @@ void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::e
                                         "Content", request->params().get("Content"))));
             } else if (request->method() == "UpgradeFileTransfer") {
                 int account = request->params().get("Account");
-                //std::cout << "Account: " << std::to_string(account) << std::endl;
+                // std::cout << "Account: " << std::to_string(account) << std::endl;
 
-                if (file_stream_.eof()) {
-                    file_stream_.close();
-                    return;
+                int blocksize = 15000;
+                std::string content;
+
+                if (encoded_size_ - encoded_consume_ < blocksize) {
+                    blocksize = encoded_size_ - encoded_consume_;
+                    content = encoded_content_.substr(0, blocksize);
+                    encoded_content_.clear();
+                    encoded_consume_ += blocksize;
+                } else {
+                    content = encoded_content_.substr(0, blocksize);
+                    encoded_content_.erase(0, blocksize);
+                    encoded_consume_ += blocksize;
                 }
 
-                char buffer[1025] = {0};
-                file_stream_.read(buffer, 1024);
-                size_t real_read = file_stream_.gcount();
-                std::string content = buffer;
-
-                upgrade_data_consume_ += real_read;
-
-                if (real_read < 1024) {
-                    content.erase(real_read, 1024 - real_read);
-                    file_stream_.close();
-                }
-                int process = (upgrade_data_consume_ * 100) / upgrade_file_size_;
-
-                std::cout << "Data: " << content << "\n";
+                int process = (encoded_consume_ * 100) / encoded_size_;
 
                 result["Method"] = "UpgradeProcessing";
                 result["Account"] = account;
-                //result["Content"] = content;
+                result["Content"] = content;
                 result["Process"] = process;
                 response.reset(new jsonrpcpp::Response(*request, result));
             }
@@ -145,7 +147,7 @@ std::string FSession::doMessageReceived(const std::string& message)
             }
         }
         if (response) {
-            std::cout << "Response: " << response->to_json().dump() << "\n";
+            //std::cout << "Response: " << response->to_json().dump() << "\n";
             return response->to_json().dump();
         }
         return "";
@@ -183,6 +185,7 @@ void FSession::doRead()
                 if (!response.empty()) {
                     Deliver(response);
                 }
+                //std::cout << "++ " << line << "\n";
             }
             streambuf_.consume(bytes_transferred);
             doRead();

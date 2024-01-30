@@ -2,6 +2,7 @@ SET(PROG_NAME fclient)
 
 INCLUDE_DIRECTORIES(
   ${CMAKE_SOURCE_DIR}/common
+  ${CMAKE_SOURCE_DIR}/crypto
   ${CMAKE_SOURCE_DIR}/${PROG_NAME}
 )
 
@@ -10,5 +11,13 @@ AUX_SOURCE_DIRECTORY(
   src_dir
 )
 
-ADD_EXECUTABLE(${PROG_NAME} ${src_dir})
+ADD_EXECUTABLE(${PROG_NAME}
+  ${src_dir}
+  ${CMAKE_SOURCE_DIR}/crypto/base64.cc
+)
 
+TARGET_LINK_LIBRARIES(
+  ${PROG_NAME} PUBLIC
+  cryptor
+  cryptopp
+)

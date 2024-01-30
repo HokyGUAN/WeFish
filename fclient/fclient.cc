@@ -12,9 +12,13 @@
 #include <stdio.h>
 #include <utility>
 
+#include "base64.hpp"
+#include "cryptor.h"
+
 
 Connection::Connection(boost::asio::io_context& io_context, tcp::resolver::results_type& endpoints)
-    : io_context_(io_context), strand_(io_context), socket_(io_context), endpoints_(endpoints) {
+    : io_context_(io_context), strand_(io_context), socket_(io_context), endpoints_(endpoints)
+{
 }
 
 void Connection::doConnect(const ResponseHandler& handler)
@@ -121,9 +125,15 @@ int FileStream::Size(void)
     return contents_.size();
 }
 
+std::string FileStream::Name(void)
+{
+    return name_;
+}
+
 FClient::FClient(boost::asio::io_context& io_context, tcp::resolver::results_type& endpoints)
 {
     connection_ = std::make_shared<Connection>(io_context, endpoints);
+    key_ = "ba3483abc1af7e9d0cf2325010ed76d7";
     Start();
 }
 
@@ -160,10 +170,11 @@ void FClient::doMessageReceived()
                         connection_->SendAsync(request->to_json().dump());
                     }
                 } else if (param->get("Method") == "UpgradeReply") {
-                    size_t file_size = param->get("Filesize");
-                    std::cout << "Upgrade File Size: " << std::to_string(file_size) << std::endl;
+                    file_size_ = param->get("Filesize");
+                    std::string file_name = param->get("Filename");
 
-                    std::string file_name = "upgrade.exe";
+                    std::cout << "File Name: " << file_name << " Upgrade Size: " << std::to_string(file_size_) << std::endl;
+
                     upgrade_stream_.reset(new FileStream(file_name));
 
                     jsonrpcpp::request_ptr request(nullptr);
@@ -184,8 +195,10 @@ void FClient::doMessageReceived()
                         connection_->SendAsync(request->to_json().dump());
                     } else {
                         std::fstream file_stream;
-                        file_stream.open("upgrade2.exe", std::ios::out | std::ios::binary);
-                        file_stream.write(upgrade_stream_->Pop().c_str(), upgrade_stream_->Size());
+                        file_stream.open(upgrade_stream_->Name(), std::ios::out | std::ios::binary);
+                        std::string decode = CBASE64::Decode(upgrade_stream_->Pop());
+                        decode.resize(file_size_);
+                        file_stream.write(decode.c_str(), decode.size());
                         file_stream.close();
                     }
                 }
@@ -218,7 +231,7 @@ void FClient::doMessageReceived()
                     } else if (status == 0 && it != container_.end()) {
                         (it->second)->Push(content);
                         std::fstream file_stream;
-                        file_stream.open(file_name, std::ios::out | std::ios::binary);
+                        file_stream.open(file_name+"_rev", std::ios::out | std::ios::binary);
                         file_stream.write((it->second)->Pop().c_str(), (it->second)->Size());
                         file_stream.close();
                         container_.erase(it);
@@ -254,7 +267,7 @@ void FClient::SendFile(std::string& file_name)
     file_stream.seekg(0, std::ios::beg);
 
     jsonrpcpp::request_ptr request(nullptr);
-    std::string checksum = "36086161706636fbf413b2344fd65e0c";
+    std::string checksum = "b60b0ce5bbab49f5ec134022ed7a908e";
     int account = 522001;
     int to_account = 522002;
 
@@ -272,6 +285,7 @@ void FClient::SendFile(std::string& file_name)
             if (real_read < 1024) {
                 std::string content = buffer;
                 content.erase(real_read, 1024 - real_read);
+
                 request.reset(new jsonrpcpp::Request(jsonrpcpp::Id(MESSAGE_TYPE_FILE), "FileTransfer",
                     jsonrpcpp::Parameter("Account", account, "ToAccount", to_account, "Status", 0,
                                         "Filename", file_name, "Filesize", file_size, "Checksum", checksum,
@@ -294,7 +308,7 @@ int main(int argc, char* argv[])
     try {
         boost::asio::io_context io_context;
         tcp::resolver resolver(io_context);
-        auto endpoints = resolver.resolve("10.13.3.23", "6688");
+        auto endpoints = resolver.resolve("localhost", "6699");
         FClient fclient(io_context, endpoints);
 
         jsonrpcpp::request_ptr request(nullptr);
@@ -304,7 +318,7 @@ int main(int argc, char* argv[])
         std::cout << request->to_json().dump() << std::endl;
 
         if (atoi(argv[1]) == 1) {
-            std::string filename = "send.txt";
+            std::string filename = "tmp";
             fclient.SendFile(filename);
         }
 

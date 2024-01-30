@@ -16,7 +16,11 @@ AUX_SOURCE_DIRECTORY(
   src_dir
 )
 
-ADD_EXECUTABLE(${PROG_NAME} ${src_dir})
+ADD_EXECUTABLE(${PROG_NAME}
+  ${src_dir}
+  ${CMAKE_SOURCE_DIR}/crypto/base64.cc
+)
+
 
 TARGET_LINK_LIBRARIES(
   ${PROG_NAME} PUBLIC

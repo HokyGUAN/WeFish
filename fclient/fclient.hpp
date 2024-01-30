@@ -45,6 +45,7 @@ public:
     void Push(std::string& content);
     std::string Pop(void);
     int Size(void);
+    std::string Name(void);
 
 private:
     std::string name_;
@@ -67,6 +68,8 @@ private:
     std::shared_ptr<Connection> connection_;
     std::map<std::string, std::shared_ptr<FileStream>> container_;
     std::shared_ptr<FileStream> upgrade_stream_ = nullptr;
+    size_t file_size_ = 0;
+    std::string key_;
 };
 
 

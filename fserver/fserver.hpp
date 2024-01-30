@@ -94,9 +94,11 @@ private:
     boost::asio::io_context::strand strand_;
     Group& group_;
     MessageQueue messages_;
-    std::fstream file_stream_;
-    size_t upgrade_file_size_ = 0;
-    size_t upgrade_data_consume_ = 0;
+    std::string key_;
+    std::vector<char> file_content_;
+    std::string encoded_content_;
+    size_t encoded_size_ = 0;
+    size_t encoded_consume_ = 0;
 };
 
 class FServer
