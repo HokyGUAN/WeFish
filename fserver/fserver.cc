@@ -31,7 +31,6 @@ void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::e
                 account_ = request->params().get("Account");
                 std::string client_version = request->params().get("Clientversion");
                 std::cout << "Clientversion: " << client_version << std::endl;
-                //TODO need to read file
                 if (client_version != "2.0") {
                     result["Expired"] = 1;
                 } else {
@@ -48,14 +47,13 @@ void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::e
                     return;
                 }
 
-                file_content_.assign(std::istreambuf_iterator<char>(file_stream), std::istreambuf_iterator<char>());
+                std::vector<char> file_content((std::istreambuf_iterator<char>(file_stream)), std::istreambuf_iterator<char>());
                 file_stream.close();
 
-                encoded_content_ = CBASE64::Encode(file_content_.data(), file_content_.size());
-                encoded_size_ = encoded_content_.size();
+                upgrade_file_content_ = std::string(file_content.begin(), file_content.end());
+                upgrade_file_size_ = file_content.size();
 
                 result["Method"] = "UpgradeReply";
-                result["Filesize"] = file_content_.size();
                 result["Filename"] = "upgrade_rev.exe";
                 response.reset(new jsonrpcpp::Response(*request, result)); 
             }
@@ -89,22 +87,25 @@ void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::e
                 int blocksize = 15000;
                 std::string content;
 
-                if (encoded_size_ - encoded_consume_ < blocksize) {
-                    blocksize = encoded_size_ - encoded_consume_;
-                    content = encoded_content_.substr(0, blocksize);
-                    encoded_content_.clear();
-                    encoded_consume_ += blocksize;
+                if (upgrade_file_size_ - data_consume_ < blocksize) {
+                    blocksize = upgrade_file_size_ - data_consume_;
+                    content = upgrade_file_content_.substr(0, blocksize);
+                    upgrade_file_content_.clear();
+                    data_consume_ += blocksize;
                 } else {
-                    content = encoded_content_.substr(0, blocksize);
-                    encoded_content_.erase(0, blocksize);
-                    encoded_consume_ += blocksize;
+                    content = upgrade_file_content_.substr(0, blocksize);
+                    upgrade_file_content_.erase(0, blocksize);
+                    data_consume_ += blocksize;
                 }
 
-                int process = (encoded_consume_ * 100) / encoded_size_;
+                int process = (data_consume_ * 100) / upgrade_file_size_;
+
+                std::string encrypt = CBASE64::Encode(content.data(), content.size());
 
                 result["Method"] = "UpgradeProcessing";
                 result["Account"] = account;
-                result["Content"] = content;
+                result["Content"] = encrypt;
+                result["Length"] = content.size();
                 result["Process"] = process;
                 response.reset(new jsonrpcpp::Response(*request, result));
             }
@@ -157,12 +158,6 @@ std::string FSession::doMessageReceived(const std::string& message)
 void FSession::Start()
 {
     doRead();
-    // file_stream_.open("example.txt", std::ios::out | std::ios::binary);
-    // if (file_stream_.is_open()) {
-    //     doRead();
-    // } else {
-    //     std::cerr << "Unable to open file" << std::endl;
-    // }
 }
 
 void FSession::doRead()
@@ -185,7 +180,6 @@ void FSession::doRead()
                 if (!response.empty()) {
                     Deliver(response);
                 }
-                //std::cout << "++ " << line << "\n";
             }
             streambuf_.consume(bytes_transferred);
             doRead();
@@ -220,7 +214,6 @@ void FSession::Deliver(const std::string& msg)
 FServer::FServer(boost::asio::io_context& io_context, const tcp::endpoint& endpoint)
     : io_context_(io_context), acceptor_(io_context, endpoint)
 {
-    //group_.Join(shared_from_this());
     doAccept();
 }
 

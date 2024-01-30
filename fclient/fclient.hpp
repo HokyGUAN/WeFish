@@ -68,7 +68,6 @@ private:
     std::shared_ptr<Connection> connection_;
     std::map<std::string, std::shared_ptr<FileStream>> container_;
     std::shared_ptr<FileStream> upgrade_stream_ = nullptr;
-    size_t file_size_ = 0;
     std::string key_;
 };
 

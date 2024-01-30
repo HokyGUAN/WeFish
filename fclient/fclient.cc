@@ -170,10 +170,8 @@ void FClient::doMessageReceived()
                         connection_->SendAsync(request->to_json().dump());
                     }
                 } else if (param->get("Method") == "UpgradeReply") {
-                    file_size_ = param->get("Filesize");
                     std::string file_name = param->get("Filename");
-
-                    std::cout << "File Name: " << file_name << " Upgrade Size: " << std::to_string(file_size_) << std::endl;
+                    std::cout << "File Name: " << file_name << std::endl;
 
                     upgrade_stream_.reset(new FileStream(file_name));
 
@@ -184,9 +182,13 @@ void FClient::doMessageReceived()
 
                 } else if (param->get("Method") == "UpgradeProcessing") {
                     int process = param->get("Process");
+                    int length = param->get("Length");
+
                     std::cout << "Process: " << std::to_string(process) << std::endl;
                     std::string content = param->get("Content");
-                    upgrade_stream_->Push(content);
+                    std::string decrypt = CBASE64::Decode(content);
+                    decrypt.resize(length);
+                    upgrade_stream_->Push(decrypt);
 
                     if (process < 100) {
                         jsonrpcpp::request_ptr request(nullptr);
@@ -196,9 +198,7 @@ void FClient::doMessageReceived()
                     } else {
                         std::fstream file_stream;
                         file_stream.open(upgrade_stream_->Name(), std::ios::out | std::ios::binary);
-                        std::string decode = CBASE64::Decode(upgrade_stream_->Pop());
-                        decode.resize(file_size_);
-                        file_stream.write(decode.c_str(), decode.size());
+                        file_stream.write(upgrade_stream_->Pop().c_str(), upgrade_stream_->Size());
                         file_stream.close();
                     }
                 }
