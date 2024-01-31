@@ -16,6 +16,23 @@
 #include "cryptor.h"
 
 
+void showProgressBar(int progress, int total) {
+    const int barWidth = 70;
+
+    float progressRatio = static_cast<float>(progress) / total;
+    int progressBarLength = static_cast<int>(progressRatio * barWidth);
+
+    std::cout << "[";
+    for (int i = 0; i < progressBarLength; ++i) {
+        std::cout << "=";
+    }
+    for (int i = progressBarLength; i < barWidth; ++i) {
+        std::cout << " ";
+    }
+    std::cout << "] " << static_cast<int>(progressRatio * 100.0) << "%\r";
+    std::cout.flush();
+}
+
 Connection::Connection(boost::asio::io_context& io_context, tcp::resolver::results_type& endpoints)
     : io_context_(io_context), strand_(io_context), socket_(io_context), endpoints_(endpoints)
 {
@@ -184,9 +201,10 @@ void FClient::doMessageReceived()
                     int process = param->get("Process");
                     int length = param->get("Length");
 
-                    std::cout << "Process: " << std::to_string(process) << std::endl;
+                    //std::cout << "Process: " << std::to_string(process) << std::endl;
                     std::string content = param->get("Content");
                     std::string decrypt = CBASE64::Decode(content);
+                    showProgressBar(process , 100);
                     decrypt.resize(length);
                     upgrade_stream_->Push(decrypt);
 
