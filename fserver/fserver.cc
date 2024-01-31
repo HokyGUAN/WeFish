@@ -22,17 +22,20 @@ FSession::FSession(boost::asio::io_context& io_context, tcp::socket socket, Grou
     key_ = "ba3483abc1af7e9d0cf2325010ed76d7";
 }
 
-void FSession::doFileSection(std::streampos start, std::streampos sectionSize)
+void FSession::doFileSection(int sequence, std::streampos start, std::streampos sectionSize)
 {
-    if (this->file_stream_) {
-        file_stream_.seekg(start);
-
-        std::string sectionData;
-        sectionData.resize(sectionSize);
-        file_stream_.read(&sectionData[0], sectionSize);
-        std::unique_lock<std::mutex> lock(mutex_);
-        v_section_.push_back(sectionData);
+    std::fstream file;
+    file.open(upgrade_file_name_, std::ios::in | std::ios::binary);
+    if (!file.is_open()) {
+        return;
     }
+    file.seekg(start);
+
+    std::string sectionData;
+    sectionData.resize(sectionSize);
+    file.read(&sectionData[0], sectionSize);
+    std::unique_lock<std::mutex> lock(mutex_);
+    v_section_[sequence] = sectionData;
 }
 
 void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::entity_ptr& response, jsonrpcpp::notification_ptr& notification)
@@ -54,37 +57,39 @@ void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::e
                 result["Account"] = account_;
                 response.reset(new jsonrpcpp::Response(*request, result)); 
             } else if (request->method() == "UpgradeRequest") {
-                file_stream_.open("Chains.wav", std::ios::in | std::ios::binary);
-                if (!file_stream_.is_open()) {
+                upgrade_file_name_ = "Chains.wav";
+                std::fstream file_stream;
+                file_stream.open(upgrade_file_name_, std::ios::in | std::ios::binary);
+                if (!file_stream.is_open()) {
                     std::cerr << "Could not open file" << std::endl;
                     return;
                 }
-
-                file_stream_.seekg(0, std::ios::end);
-                std::streampos filesize = file_stream_.tellg();
+                file_stream.seekg(0, std::ios::end);
+                std::streampos filesize = file_stream.tellg();
+                file_stream.close();
 
 #define THREAD_NUM 4
+                v_section_.resize(THREAD_NUM);
                 std::streampos sizeConsume = 0;
                 std::streampos sizePerBloack = filesize / THREAD_NUM;
-                std::vector<std::thread> threads;
+                std::vector<std::thread> v_thread;
                 for (int i = 0; i < THREAD_NUM; ++i) {
                     std::streampos start = i * sizePerBloack;
                     if (i == THREAD_NUM - 1) {
                         sizePerBloack = filesize - sizeConsume;
                     }
                     sizeConsume += sizePerBloack;
-                    threads.emplace_back(&FSession::doFileSection, this, start, sizePerBloack);
-                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                    v_thread.emplace_back(&FSession::doFileSection, this, i, start, sizePerBloack);
                 }
 
-                for (auto& thread : threads) {
+                for (auto& thread : v_thread) {
                     thread.join();
                 }
-                file_stream_.close();
 
                 for (auto it : v_section_) {
                     upgrade_file_content_.append(it);
                 }
+                // std::cout << upgrade_file_content_ << "\n";
 
                 upgrade_file_size_ = upgrade_file_content_.size();
 

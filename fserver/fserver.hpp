@@ -23,6 +23,7 @@
 #include <list>
 #include <utility>
 #include <mutex>
+#include <map>
 
 #include "jsonrpcpp.hpp"
 #include "message.hpp"
@@ -89,7 +90,7 @@ public:
     void doRead();
     void doWrite();
 
-    void doFileSection(std::streampos start, std::streampos sectionSize);
+    void doFileSection(int sequence, std::streampos start, std::streampos sectionSize);
 
 private:
     tcp::socket socket_;
@@ -98,7 +99,7 @@ private:
     Group& group_;
     MessageQueue messages_;
     std::string key_;
-    std::fstream file_stream_;
+    std::string upgrade_file_name_;
     std::string upgrade_file_content_;
     size_t upgrade_file_size_ = 0;
     size_t data_consume_ = 0;
