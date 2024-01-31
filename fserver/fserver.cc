@@ -69,12 +69,10 @@ void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::e
                 std::vector<std::thread> threads;
                 for (int i = 0; i < THREAD_NUM; ++i) {
                     std::streampos start = i * sizePerBloack;
-                    if (filesize - sizeConsume > sizePerBloack * 2) {
-                        sizeConsume += sizePerBloack;
-                    } else {
+                    if (i == THREAD_NUM - 1) {
                         sizePerBloack = filesize - sizeConsume;
-                        sizeConsume += sizePerBloack;
                     }
+                    sizeConsume += sizePerBloack;
                     threads.emplace_back(&FSession::doFileSection, this, start, sizePerBloack);
                     std::this_thread::sleep_for(std::chrono::milliseconds(5));
                 }
