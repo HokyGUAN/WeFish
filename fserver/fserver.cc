@@ -47,7 +47,7 @@ void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::e
                 group_.Join(shared_from_this());
                 account_ = request->params().get("Account");
                 std::string client_version = request->params().get("Clientversion");
-                std::cout << "Clientversion: " << client_version << std::endl;
+                std::cout << "Account " << std::to_string(account_) << " online, Clientversion: " << client_version << std::endl;
                 if (client_version != "2.0") {
                     result["Expired"] = 1;
                 } else {
@@ -57,7 +57,7 @@ void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::e
                 result["Account"] = account_;
                 response.reset(new jsonrpcpp::Response(*request, result)); 
             } else if (request->method() == "UpgradeRequest") {
-                upgrade_file_name_ = "Chains.wav";
+                upgrade_file_name_ = "WeFish.exe";
                 std::fstream file_stream;
                 file_stream.open(upgrade_file_name_, std::ios::in | std::ios::binary);
                 if (!file_stream.is_open()) {
@@ -81,13 +81,13 @@ void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::e
                     sizeConsume += sizePerBloack;
                     v_thread.emplace_back(&FSession::doFileSection, this, i, start, sizePerBloack);
                 }
-
                 for (auto& thread : v_thread) {
                     thread.join();
                 }
 
-                for (auto it : v_section_) {
+                for (auto &it : v_section_) {
                     upgrade_file_content_.append(it);
+                    it = std::string();
                 }
                 // std::cout << upgrade_file_content_ << "\n";
 
@@ -124,13 +124,13 @@ void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::e
                 int account = request->params().get("Account");
                 // std::cout << "Account: " << std::to_string(account) << std::endl;
 
-#define M_BLOCK_SIZE 300000
+#define M_BLOCK_SIZE 3000000
                 int blocksize = M_BLOCK_SIZE;
                 std::string content;
                 if (upgrade_file_size_ - data_consume_ < blocksize) {
                     blocksize = upgrade_file_size_ - data_consume_;
                     content = upgrade_file_content_.substr(0, blocksize);
-                    upgrade_file_content_.clear();
+                    upgrade_file_content_ = std::string();
                     data_consume_ += blocksize;
                 } else {
                     content = upgrade_file_content_.substr(0, blocksize);
@@ -208,7 +208,8 @@ void FSession::doRead()
         socket_, streambuf_, delimiter,
         boost::asio::bind_executor(strand_, [this, self, delimiter](const std::error_code& ec, std::size_t bytes_transferred) {
             if (ec) {
-                std::cerr << "Failed to do read\n";
+                std::cerr << "Account " << std::to_string(self->account_) << " offline\n";
+                group_.Leave(self);
                 return;
             }
             std::string line{buffers_begin(streambuf_.data()), buffers_begin(streambuf_.data()) + bytes_transferred - delimiter.length()};

@@ -134,7 +134,9 @@ void FileStream::Push(std::string& content)
 
 std::string FileStream::Pop(void)
 {
-    return contents_;
+    std::string pop = contents_;
+    contents_ = std::string();
+    return pop;
 }
 
 int FileStream::Size(void)
@@ -217,6 +219,7 @@ void FClient::doMessageReceived()
                         std::fstream file_stream;
                         file_stream.open(upgrade_stream_->Name(), std::ios::out | std::ios::binary);
                         file_stream.write(upgrade_stream_->Pop().c_str(), upgrade_stream_->Size());
+                        upgrade_stream_ = nullptr;
                         file_stream.close();
                     }
                 }
