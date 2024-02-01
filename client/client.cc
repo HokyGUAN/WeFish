@@ -101,7 +101,7 @@ Connection::Connection(boost::asio::io_context& io_context, tcp::resolver::resul
 void Connection::doConnect(const ResponseHandler& handler)
 {
     boost::asio::async_connect(socket_, endpoints_,
-        [this, self = shared_from_this(), handler](boost::system::error_code ec, tcp::endpoint)
+        [this, self = shared_from_this(), handler](const boost::system::error_code& ec, tcp::endpoint)
         {
             std::string ret;
             if (!ec && handler)
@@ -137,7 +137,7 @@ void Connection::doRead(const ResponseHandler& handler)
     const std::string delimiter = "\n";
     boost::asio::async_read_until(
         socket_, streambuf_, delimiter,
-        boost::asio::bind_executor(strand_, [this, self = shared_from_this(), delimiter, handler](const std::error_code& ec, std::size_t bytes_transferred) {
+        boost::asio::bind_executor(strand_, [this, self = shared_from_this(), delimiter, handler](const boost::system::error_code& ec, std::size_t bytes_transferred) {
             if (ec)
             {
                 if (handler) {

@@ -1,7 +1,7 @@
 set(PROG_NAME client)
 
 include_directories(
-  ${CMAKE_SOURCE_DIR}
+  ${CMAKE_SOURCE_DIR}/common
   ${CMAKE_SOURCE_DIR}/${PROG_NAME}
 )
 
