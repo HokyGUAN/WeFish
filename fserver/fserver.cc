@@ -57,7 +57,8 @@ void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::e
                 result["Account"] = account_;
                 response.reset(new jsonrpcpp::Response(*request, result)); 
             } else if (request->method() == "UpgradeRequest") {
-                upgrade_file_name_ = "WeFish.exe";
+#define UPGRADE_FILE_NAME "WeFish.exe"
+                upgrade_file_name_ = UPGRADE_FILE_NAME;
                 std::fstream file_stream;
                 file_stream.open(upgrade_file_name_, std::ios::in | std::ios::binary);
                 if (!file_stream.is_open()) {
@@ -184,7 +185,7 @@ std::string FSession::doMessageReceived(const std::string& message)
                 int to_account = notification->params().get("ToAccount");
                 
                 group_.Deliver(to_account, notification->to_json().dump());
-                std::cout << notification->to_json().dump() << std::endl;
+                //std::cout << notification->to_json().dump() << std::endl;
             }
         }
         if (response) {

@@ -4,6 +4,7 @@
 #include <fstream>
 #include <string>
 #include <deque>
+#include <mutex>
 #include <map>
 #include <boost/asio.hpp>
 
@@ -64,11 +65,15 @@ public:
     void Send(const std::string& msg);
     void SendFile(std::string& filename);
 
+    void doFileSection(std::string filename, int sequence, std::streampos start, std::streampos sectionSize);
+
 private:
     std::shared_ptr<Connection> connection_;
     std::map<std::string, std::shared_ptr<FileStream>> container_;
     std::shared_ptr<FileStream> upgrade_stream_ = nullptr;
     std::string key_;
+    std::mutex mutex_;
+    std::vector<std::string> v_section_;
 };
 
 

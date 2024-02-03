@@ -230,33 +230,38 @@ void FClient::doMessageReceived()
                     int to_account = notification->params().get("ToAccount");
                     std::string file_name = notification->params().get("Filename");
                     std::string checksum = notification->params().get("Checksum");
-                    int file_size = notification->params().get("Filesize");
+                    size_t file_size = notification->params().get("Filesize");
                     std::string content = notification->params().get("Content");
+                    std::string decrypt = CBASE64::Decode(content);
                     int status = notification->params().get("Status");
 
-                    std::cout << "Account: " << std::to_string(from_account) << std::endl;
-                    std::cout << "ToAccount: " << std::to_string(to_account) << std::endl;
-                    std::cout << "Filename: " << file_name << std::endl;
-                    std::cout << "Filesize: " << std::to_string(file_size) << std::endl;
-                    std::cout << "Checksum: " << checksum << std::endl;
-                    std::cout << "Content: " << content << std::endl;
-                    std::cout << "Status: " << std::to_string(status) << std::endl;
+                    // std::cout << "Account: " << std::to_string(from_account) << std::endl;
+                    // std::cout << "ToAccount: " << std::to_string(to_account) << std::endl;
+                    // std::cout << "Filename: " << file_name << std::endl;
+                    // std::cout << "Filesize: " << std::to_string(file_size) << std::endl;
+                    // std::cout << "Checksum: " << checksum << std::endl;
+                    // std::cout << "Content: " << content << std::endl;
+                    // std::cout << "Status: " << std::to_string(status) << std::endl;
 
+                    int process;
                     auto it = container_.find(checksum);
                     if (status == 1 && it == container_.end()) {
                         std::shared_ptr<FileStream> file_stream = std::make_shared<FileStream>(file_name);
-                        // file_stream->Push(content);
                         container_.insert(std::pair<std::string, std::shared_ptr<FileStream>>(checksum, file_stream));
                     } else if (status == 2 && it != container_.end()) {
-                        (it->second)->Push(content);
+                        (it->second)->Push(decrypt);
+                        process = (((size_t)(it->second)->Size() * 100)) / file_size;
                     } else if (status == 0 && it != container_.end()) {
-                        (it->second)->Push(content);
+                        (it->second)->Push(decrypt);
+                        process = (((size_t)(it->second)->Size() * 100)) / file_size;
                         std::fstream file_stream;
-                        file_stream.open(file_name+"_rev", std::ios::out | std::ios::binary);
+                        std::string fileName = file_name + "_rev";
+                        file_stream.open(fileName, std::ios::out | std::ios::binary);
                         file_stream.write((it->second)->Pop().c_str(), (it->second)->Size());
                         file_stream.close();
                         container_.erase(it);
                     }
+                    showProgressBar(process , 100);
 				}
             }
         }
@@ -273,10 +278,26 @@ void FClient::Stop()
     connection_->doDisconnect();
 }
 
+void FClient::doFileSection(std::string filename, int sequence, std::streampos start, std::streampos sectionSize)
+{
+    std::fstream file;
+    file.open(filename, std::ios::in | std::ios::binary);
+    if (!file.is_open()) {
+        return;
+    }
+    file.seekg(start);
+
+    std::string sectionData;
+    sectionData.resize(sectionSize);
+    file.read(&sectionData[0], sectionSize);
+    std::unique_lock<std::mutex> lock(mutex_);
+    v_section_[sequence] = sectionData;
+}
+
 void FClient::SendFile(std::string& file_name)
 {
     bool head = true;
-    char buffer[1025] = {0};
+    std::string file_content;
     std::fstream file_stream;
     file_stream.open(file_name, std::ios::in | std::ios::binary);
     if (!file_stream.is_open()) {
@@ -287,12 +308,35 @@ void FClient::SendFile(std::string& file_name)
     size_t file_size = file_stream.tellg();
     file_stream.seekg(0, std::ios::beg);
 
+#define THREAD_NUM 4
+    v_section_.resize(THREAD_NUM);
+    std::streampos sizeConsume = 0;
+    std::streampos sizePerBloack = file_size / THREAD_NUM;
+    std::vector<std::thread> v_thread;
+    for (int i = 0; i < THREAD_NUM; ++i) {
+        std::streampos start = i * sizePerBloack;
+        if (i == THREAD_NUM - 1) {
+            sizePerBloack = file_size - sizeConsume;
+        }
+        sizeConsume += sizePerBloack;
+        v_thread.emplace_back(&FClient::doFileSection, this, file_name, i, start, sizePerBloack);
+    }
+    for (auto& thread : v_thread) {
+        thread.join();
+    }
+
+    for (auto &it : v_section_) {
+        file_content.append(it);
+        it = std::string();
+    }
+
     jsonrpcpp::request_ptr request(nullptr);
     std::string checksum = "b60b0ce5bbab49f5ec134022ed7a908e";
     int account = 522001;
     int to_account = 522002;
+    int data_consume = 0;
 
-    while (file_stream.eof() == false) {
+    while (file_content.size()) {
         if (head) {
             head = false;
             request.reset(new jsonrpcpp::Request(jsonrpcpp::Id(MESSAGE_TYPE_FILE), "FileTransfer",
@@ -300,22 +344,28 @@ void FClient::SendFile(std::string& file_name)
                                     "Filename", file_name, "Filesize", file_size, "Checksum", checksum,
                                     "Content", "")));
         } else {
-            file_stream.read(buffer, 1024);
-            std::cout << "(-): " << std::to_string(file_stream.gcount()) << std::endl;
-            size_t real_read = file_stream.gcount();
-            if (real_read < 1024) {
-                std::string content = buffer;
-                content.erase(real_read, 1024 - real_read);
-
+#define M_BLOCK_SIZE 3000000
+            int blocksize = M_BLOCK_SIZE;
+            std::string content;
+            if (file_size - data_consume < blocksize) {
+                blocksize = file_size - data_consume;
+                content = file_content.substr(0, blocksize);
+                std::string encrypt = CBASE64::Encode(content.data(), content.size());
                 request.reset(new jsonrpcpp::Request(jsonrpcpp::Id(MESSAGE_TYPE_FILE), "FileTransfer",
                     jsonrpcpp::Parameter("Account", account, "ToAccount", to_account, "Status", 0,
                                         "Filename", file_name, "Filesize", file_size, "Checksum", checksum,
-                                        "Content", content)));
+                                        "Content", encrypt)));
+                file_content = std::string();
+                data_consume += blocksize;
             } else {
+                content = file_content.substr(0, blocksize);
+                std::string encrypt = CBASE64::Encode(content.data(), content.size());
                 request.reset(new jsonrpcpp::Request(jsonrpcpp::Id(MESSAGE_TYPE_FILE), "FileTransfer",
                     jsonrpcpp::Parameter("Account", account, "ToAccount", to_account, "Status", 2,
                                         "Filename", file_name, "Filesize", file_size, "Checksum", checksum,
-                                        "Content", buffer)));
+                                        "Content", encrypt)));
+                file_content.erase(0, blocksize);
+                data_consume += blocksize;
             }
         }
         Send(request->to_json().dump());
@@ -334,13 +384,16 @@ int main(int argc, char* argv[])
 
         jsonrpcpp::request_ptr request(nullptr);
         request.reset(new jsonrpcpp::Request(jsonrpcpp::Id(MESSAGE_TYPE_SETTING), "SayHello",
-            jsonrpcpp::Parameter("Account", atoi(argv[2]), "Clientversion", "1.0")));
+            jsonrpcpp::Parameter("Account", atoi(argv[2]), "Clientversion", "2.0")));
         fclient.Send(request->to_json().dump());
         std::cout << request->to_json().dump() << std::endl;
 
         if (atoi(argv[1]) == 1) {
-            std::string filename = "tmp";
-            fclient.SendFile(filename);
+            std::thread sendThread([&fclient]() {
+                std::string filename = "WeFish.exebk";
+                fclient.SendFile(filename);
+            });
+            sendThread.detach();
         }
 
         boost::asio::signal_set signals(io_context, SIGINT, SIGTERM, SIGPIPE);
