@@ -101,6 +101,7 @@ void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::e
         } else if (request->id().int_id() == MESSAGE_TYPE_FILE) {
             if (request->method() == "FileTransfer") {
                 int account = request->params().get("Account");
+                std::string name = request->params().get("Name");
                 int to_account = request->params().get("ToAccount");
                 std::string filename = request->params().get("Filename");
                 int filesize = request->params().get("Filesize");
@@ -117,10 +118,10 @@ void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::e
                 // std::cout << "Status: " << std::to_string(status) << std::endl;
 
                 notification.reset(new jsonrpcpp::Notification("FileTransferNotification",
-                    jsonrpcpp::Parameter("Account", request->params().get("Account"), "ToAccount", request->params().get("ToAccount"),
-                                        "Status", request->params().get("Status"), "Filename", request->params().get("Filename"),
-                                        "Filesize", request->params().get("Filesize"), "Checksum", request->params().get("Checksum"), 
-                                        "Content", request->params().get("Content"))));
+                    jsonrpcpp::Parameter("Account", request->params().get("Account"), "Name", request->params().get("Name"),
+                                        "ToAccount", request->params().get("ToAccount"), "Status", request->params().get("Status"),
+                                        "Filename", request->params().get("Filename"), "Filesize", request->params().get("Filesize"),
+                                        "Checksum", request->params().get("Checksum"), "Content", request->params().get("Content"))));
             } else if (request->method() == "UpgradeFileTransfer") {
                 int account = request->params().get("Account");
                 // std::cout << "Account: " << std::to_string(account) << std::endl;
@@ -184,7 +185,11 @@ std::string FSession::doMessageReceived(const std::string& message)
             if (notification->method() == "FileTransferNotification") {
                 int to_account = notification->params().get("ToAccount");
                 
-                group_.Deliver(to_account, notification->to_json().dump());
+                if (!(int)notification->params().get("ToAccount")) {
+                    group_.Deliver(self, notification->to_json().dump());
+                } else {
+                    group_.Deliver(to_account, notification->to_json().dump());
+                }
                 //std::cout << notification->to_json().dump() << std::endl;
             }
         }
@@ -218,7 +223,11 @@ void FSession::doRead()
                 if (line.back() == '\r') {
                     line.resize(line.size() - 1);
                 }
-                std::string response = doMessageReceived(line);
+
+                std::string decrypt = AESDecrypt(line, key_);
+                std::string decoded = decrypt.substr(0, decrypt.find("}}") + 2);
+
+                std::string response = doMessageReceived(decoded);
                 if (!response.empty()) {
                     Deliver(response);
                 }
@@ -247,7 +256,8 @@ void FSession::Deliver(const std::string& msg)
 {
     bool write_in_progress = !messages_.empty();
 
-    messages_.push_back(msg + "\r\n");
+    std::string encoded = AESEncrypt(msg, key_);
+    messages_.push_back(encoded + "\r\n");
     if (!write_in_progress) {
         doWrite();
     }

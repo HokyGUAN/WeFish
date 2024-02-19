@@ -61,7 +61,6 @@ public:
     {
         for (auto msg: recentMessages_) {
             participant->Deliver(msg);
-            std::cout << "M: " << msg << std::endl;
         }
     }
 

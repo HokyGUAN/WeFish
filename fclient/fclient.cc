@@ -15,6 +15,7 @@
 #include "base64.hpp"
 #include "cryptor.h"
 
+int account_s = 0;
 
 void showProgressBar(int progress, int total) {
     const int barWidth = 70;
@@ -36,6 +37,7 @@ void showProgressBar(int progress, int total) {
 Connection::Connection(boost::asio::io_context& io_context, tcp::resolver::results_type& endpoints)
     : io_context_(io_context), strand_(io_context), socket_(io_context), endpoints_(endpoints)
 {
+    key_ = "ba3483abc1af7e9d0cf2325010ed76d7";
 }
 
 void Connection::doConnect(const ResponseHandler& handler)
@@ -87,9 +89,13 @@ void Connection::doRead(const ResponseHandler& handler)
             if (!line.empty()) {
                 if (line.back() == '\r')
                     line.resize(line.size() - 1);
+
                 if (!line.empty()) {
-                    if (handler)
-                        handler(ec, line);
+                    if (handler) {
+                        std::string decrypt = AESDecrypt(line, key_);
+                        std::string decoded = decrypt.substr(0, decrypt.find("}}") + 2);
+                        handler(ec, decoded);
+                    }
                 }
             }
             streambuf_.consume(bytes_transferred);
@@ -99,8 +105,9 @@ void Connection::doRead(const ResponseHandler& handler)
 
 void Connection::SendAsync(const std::string& msg)
 {
-    strand_.post([this, self = shared_from_this(), msg]() {
-        messages_.emplace_back(msg + "\r\n");
+    std::string encoded = AESEncrypt(msg, key_);
+    strand_.post([this, self = shared_from_this(), encoded]() {
+        messages_.emplace_back(encoded + "\r\n");
         if (messages_.size() > 1) {
             // std::cout << "TCP session async_writes: " << messages_.size() << "\n";
             return;
@@ -152,7 +159,6 @@ std::string FileStream::Name(void)
 FClient::FClient(boost::asio::io_context& io_context, tcp::resolver::results_type& endpoints)
 {
     connection_ = std::make_shared<Connection>(io_context, endpoints);
-    key_ = "ba3483abc1af7e9d0cf2325010ed76d7";
     Start();
 }
 
@@ -185,7 +191,7 @@ void FClient::doMessageReceived()
                     if (Expired) {
                         jsonrpcpp::request_ptr request(nullptr);
                         request.reset(new jsonrpcpp::Request(jsonrpcpp::Id(MESSAGE_TYPE_SETTING), "UpgradeRequest",
-                            jsonrpcpp::Parameter("Account", 522001)));
+                            jsonrpcpp::Parameter("Account", account_s)));
                         connection_->SendAsync(request->to_json().dump());
                     }
                 } else if (param->get("Method") == "UpgradeReply") {
@@ -196,7 +202,7 @@ void FClient::doMessageReceived()
 
                     jsonrpcpp::request_ptr request(nullptr);
                     request.reset(new jsonrpcpp::Request(jsonrpcpp::Id(MESSAGE_TYPE_FILE), "UpgradeFileTransfer",
-                        jsonrpcpp::Parameter("Account", 522001)));
+                        jsonrpcpp::Parameter("Account", account_s)));
                     connection_->SendAsync(request->to_json().dump());
 
                 } else if (param->get("Method") == "UpgradeProcessing") {
@@ -213,7 +219,7 @@ void FClient::doMessageReceived()
                     if (process < 100) {
                         jsonrpcpp::request_ptr request(nullptr);
                         request.reset(new jsonrpcpp::Request(jsonrpcpp::Id(MESSAGE_TYPE_FILE), "UpgradeFileTransfer",
-                            jsonrpcpp::Parameter("Account", 522001)));
+                            jsonrpcpp::Parameter("Account", account_s)));
                         connection_->SendAsync(request->to_json().dump());
                     } else {
                         std::fstream file_stream;
@@ -227,6 +233,7 @@ void FClient::doMessageReceived()
                 jsonrpcpp::notification_ptr notification = std::dynamic_pointer_cast<jsonrpcpp::Notification>(entity);
                 if (notification->method() == "FileTransferNotification") {
                     int from_account = notification->params().get("Account");
+                    std::string name = notification->params().get("Name");
                     int to_account = notification->params().get("ToAccount");
                     std::string file_name = notification->params().get("Filename");
                     std::string checksum = notification->params().get("Checksum");
@@ -262,7 +269,7 @@ void FClient::doMessageReceived()
                         container_.erase(it);
                     }
                     showProgressBar(process , 100);
-				}
+                }
             }
         }
     });
@@ -332,15 +339,15 @@ void FClient::SendFile(std::string& file_name)
 
     jsonrpcpp::request_ptr request(nullptr);
     std::string checksum = "b60b0ce5bbab49f5ec134022ed7a908e";
-    int account = 522001;
-    int to_account = 522002;
+    int account = account_s;
+    int to_account = 0;
     int data_consume = 0;
 
     while (file_content.size()) {
         if (head) {
             head = false;
             request.reset(new jsonrpcpp::Request(jsonrpcpp::Id(MESSAGE_TYPE_FILE), "FileTransfer",
-                jsonrpcpp::Parameter("Account", account, "ToAccount", to_account, "Status", 1,
+                jsonrpcpp::Parameter("Account", account_s, "Name", "Fclient", "ToAccount", to_account, "Status", 1,
                                     "Filename", file_name, "Filesize", file_size, "Checksum", checksum,
                                     "Content", "")));
         } else {
@@ -352,7 +359,7 @@ void FClient::SendFile(std::string& file_name)
                 content = file_content.substr(0, blocksize);
                 std::string encrypt = CBASE64::Encode(content.data(), content.size());
                 request.reset(new jsonrpcpp::Request(jsonrpcpp::Id(MESSAGE_TYPE_FILE), "FileTransfer",
-                    jsonrpcpp::Parameter("Account", account, "ToAccount", to_account, "Status", 0,
+                    jsonrpcpp::Parameter("Account", account_s, "Name", "Fclient", "ToAccount", to_account, "Status", 0,
                                         "Filename", file_name, "Filesize", file_size, "Checksum", checksum,
                                         "Content", encrypt)));
                 file_content = std::string();
@@ -361,7 +368,7 @@ void FClient::SendFile(std::string& file_name)
                 content = file_content.substr(0, blocksize);
                 std::string encrypt = CBASE64::Encode(content.data(), content.size());
                 request.reset(new jsonrpcpp::Request(jsonrpcpp::Id(MESSAGE_TYPE_FILE), "FileTransfer",
-                    jsonrpcpp::Parameter("Account", account, "ToAccount", to_account, "Status", 2,
+                    jsonrpcpp::Parameter("Account", account_s, "Name", "Fclient", "ToAccount", to_account, "Status", 2,
                                         "Filename", file_name, "Filesize", file_size, "Checksum", checksum,
                                         "Content", encrypt)));
                 file_content.erase(0, blocksize);
@@ -379,18 +386,20 @@ int main(int argc, char* argv[])
     try {
         boost::asio::io_context io_context;
         tcp::resolver resolver(io_context);
-        auto endpoints = resolver.resolve("localhost", "6699");
+        auto endpoints = resolver.resolve("localhost", "26690");
         FClient fclient(io_context, endpoints);
+
+        account_s = atoi(argv[2]);
 
         jsonrpcpp::request_ptr request(nullptr);
         request.reset(new jsonrpcpp::Request(jsonrpcpp::Id(MESSAGE_TYPE_SETTING), "SayHello",
-            jsonrpcpp::Parameter("Account", atoi(argv[2]), "Clientversion", "2.0")));
+            jsonrpcpp::Parameter("Account", account_s, "Clientversion", "2.0")));
         fclient.Send(request->to_json().dump());
         std::cout << request->to_json().dump() << std::endl;
 
         if (atoi(argv[1]) == 1) {
             std::thread sendThread([&fclient]() {
-                std::string filename = "WeFish.exebk";
+                std::string filename = "Chains.wav";
                 fclient.SendFile(filename);
             });
             sendThread.detach();

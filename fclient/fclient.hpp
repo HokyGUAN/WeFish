@@ -32,6 +32,7 @@ private:
     boost::asio::io_context& io_context_;
     tcp::resolver::results_type& endpoints_;
     tcp::socket socket_;
+    std::string key_;
     boost::asio::io_context::strand strand_;
     boost::asio::streambuf streambuf_;
     std::deque<std::string> messages_;
@@ -71,7 +72,6 @@ private:
     std::shared_ptr<Connection> connection_;
     std::map<std::string, std::shared_ptr<FileStream>> container_;
     std::shared_ptr<FileStream> upgrade_stream_ = nullptr;
-    std::string key_;
     std::mutex mutex_;
     std::vector<std::string> v_section_;
 };
