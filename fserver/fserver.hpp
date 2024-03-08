@@ -28,6 +28,9 @@
 #include "jsonrpcpp.hpp"
 #include "message.hpp"
 
+#define WEFISH_VERSION "D_20240307_1"
+#define UPGRADE_FILE_NAME "WeFish"
+#define UPGRADE_FILE_SUFFIX ".exe"
 
 using boost::asio::ip::tcp;
 

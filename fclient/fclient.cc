@@ -393,7 +393,7 @@ int main(int argc, char* argv[])
 
         jsonrpcpp::request_ptr request(nullptr);
         request.reset(new jsonrpcpp::Request(jsonrpcpp::Id(MESSAGE_TYPE_SETTING), "SayHello",
-            jsonrpcpp::Parameter("Account", account_s, "Clientversion", "2.0")));
+            jsonrpcpp::Parameter("Account", account_s, "Clientversion", "D_20240221_1")));
         fclient.Send(request->to_json().dump());
         std::cout << request->to_json().dump() << std::endl;
 

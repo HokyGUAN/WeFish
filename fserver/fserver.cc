@@ -43,26 +43,29 @@ void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::e
     try {
         Json result;
         if (request->id().int_id() == MESSAGE_TYPE_SETTING) {
-            if (request->method() == "SayHello") {
+            if (request->method() == "VersionCheck") {
                 group_.Join(shared_from_this());
-                account_ = request->params().get("Account");
                 std::string client_version = request->params().get("Clientversion");
-                std::cout << "Account " << std::to_string(account_) << " online, Clientversion: " << client_version << std::endl;
-                if (client_version != "2.0") {
+                std::cout << "Clientversion: " << client_version << std::endl;
+                if (client_version != WEFISH_VERSION) {
                     result["Expired"] = 1;
                 } else {
                     result["Expired"] = 0;
                 }
+                result["Method"] = "VersionChecked";
+                response.reset(new jsonrpcpp::Response(*request, result));
+            } else if (request->method() == "SayHello") {
+                account_ = request->params().get("Account");
+                std::cout << "Account " << std::to_string(account_) << " online" << std::endl;
                 result["Method"] = "SayHello";
                 result["Account"] = account_;
                 response.reset(new jsonrpcpp::Response(*request, result)); 
             } else if (request->method() == "UpgradeRequest") {
-#define UPGRADE_FILE_NAME "WeFish.exe"
-                upgrade_file_name_ = UPGRADE_FILE_NAME;
+                upgrade_file_name_ = std::string(UPGRADE_FILE_NAME) + "_" + std::string(WEFISH_VERSION) + std::string(UPGRADE_FILE_SUFFIX);
                 std::fstream file_stream;
                 file_stream.open(upgrade_file_name_, std::ios::in | std::ios::binary);
                 if (!file_stream.is_open()) {
-                    std::cerr << "Could not open file" << std::endl;
+                    std::cerr << "Upgrade package: " << upgrade_file_name_ << " not found" << std::endl;
                     return;
                 }
                 file_stream.seekg(0, std::ios::end);
@@ -95,7 +98,7 @@ void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::e
                 upgrade_file_size_ = upgrade_file_content_.size();
 
                 result["Method"] = "UpgradeReply";
-                result["Filename"] = "upgrade_rev.exe";
+                result["Filename"] = upgrade_file_name_;
                 response.reset(new jsonrpcpp::Response(*request, result)); 
             }
         } else if (request->id().int_id() == MESSAGE_TYPE_FILE) {
@@ -159,7 +162,6 @@ void FSession::processRequest(const jsonrpcpp::request_ptr request, jsonrpcpp::e
         response.reset(new jsonrpcpp::InternalErrorException(e.what(), request->id()));
     }
 }
-
 
 std::string FSession::doMessageReceived(const std::string& message)
 {
